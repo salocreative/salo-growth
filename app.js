@@ -7,7 +7,8 @@ const STEP_TEXT = [
   "Revenue, capacity and profit",
   "Revenue, capacity, profit and target",
   "Profit and target",
-  "Profit progress to target by year"
+  "Profit progress to target by year",
+  "Utilisation"
 ];
 const BRAND = {
   primary: "#6405FF",
@@ -36,6 +37,7 @@ let profit = [];
 let capacity = [];
 let target = [];
 let targetPercent = [];
+let utilisation = [];
 let ringCharts = [];
 
 function parseCurrency(raw) {
@@ -128,11 +130,42 @@ function extractSeries(rows) {
 
   const yearRow = rows.find((row) => String(row?.[0] ?? "").trim() === "") || rows[0] || [];
   const revenueRow = findRowByLabels(["turnover", "revenue"], 1);
+  /** Prefer £ profit row; do not match "Profit (%)" or other profit-derived rows. */
   const profitRow =
-    rows.find((row) => normalizeLabel(row?.[0]).startsWith("profit")) || rows[2] || [];
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      if (!lab.startsWith("profit")) return false;
+      if (lab.includes("%")) return false;
+      return true;
+    }) || rows[2] || [];
   const capacityRow = findRowByLabels(["capacity"], 9);
   const targetRow = findRowByLabels(["target profit", "target"], 10);
-  const percentRow = findRowByLabels(["target %", "target percentage", "profit vs target %"], 11);
+  /** Row 12 in current sheet: "Profit vs Target" (may exceed 100%). */
+  const percentRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      return (
+        lab === "profit vs target" ||
+        lab === "profit vs target %" ||
+        ["target %", "target percentage", "profit vs target %"].includes(lab) ||
+        (lab.includes("profit") && lab.includes("target") && lab.includes("vs"))
+      );
+    }) || rows[11] || [];
+  /** Row 17: "Capacity % Achieved" — can exceed 100%; also match legacy "Utilisation" labels. */
+  const utilisationRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      return (
+        (lab.includes("capacity") && lab.includes("achieved")) ||
+        lab.includes("capacity % achieved") ||
+        lab === "utilisation" ||
+        lab === "utilization" ||
+        lab.includes("utilisation") ||
+        lab.includes("utilization")
+      );
+    }) ||
+    rows[16] ||
+    [];
 
   const yearCells = yearRow.slice(1).map((cell) => String(cell).trim());
   years = yearCells.filter((cell) => /^\d{4}$/.test(cell));
@@ -145,10 +178,22 @@ function extractSeries(rows) {
   targetPercent = parseSeries(percentRow, seriesLength, parsePercent, null);
 
   targetPercent = targetPercent.map((value, index) => {
-    if (value !== null) return value;
+    if (value !== null && value !== undefined && Number.isFinite(Number(value))) return Number(value);
     if (!target[index]) return 0;
     return (profit[index] / target[index]) * 100;
   });
+
+  function normaliseUtilisationPct(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return 0;
+    let n = Number(value);
+    if (n > 0 && n <= 1) n *= 100;
+    return Math.max(0, n);
+  }
+
+  utilisation = parseSeries(utilisationRow, seriesLength, parsePercent, null).map(normaliseUtilisationPct);
+  if (utilisation.length && utilisation.every((v) => v === 0) && rows[16]) {
+    utilisation = parseSeries(rows[16], seriesLength, parsePercent, null).map(normaliseUtilisationPct);
+  }
 
   if (!years.length || !revenue.length || !profit.length || !capacity.length || !target.length) {
     throw new Error(
@@ -423,7 +468,7 @@ function clearRingCharts() {
   ringCharts = [];
 }
 
-function renderRingCharts() {
+function renderProfitProgressRings() {
   if (!ringGridEl) return;
   clearRingCharts();
   ringGridEl.innerHTML = "";
@@ -446,31 +491,36 @@ function renderRingCharts() {
 
     const center = document.createElement("div");
     center.className = "ring-center";
-    const percentValue = Number.isFinite(targetPercent[index]) ? targetPercent[index] : 0;
+    const pctRaw = targetPercent[index];
+    const percentValue = Number.isFinite(pctRaw) ? pctRaw : 0;
     center.textContent = `${percentValue.toFixed(0)}%`;
     wrap.appendChild(center);
     card.appendChild(wrap);
 
     const meta = document.createElement("p");
     meta.className = "ring-meta";
-    meta.textContent = `Profit £${profit[index].toLocaleString("en-GB")} of target £${target[index].toLocaleString("en-GB")}`;
+    const p = profit[index];
+    const t = target[index];
+    meta.textContent =
+      p >= t
+        ? `Profit £${p.toLocaleString("en-GB")} vs target £${t.toLocaleString("en-GB")}`
+        : `Profit £${p.toLocaleString("en-GB")} of target £${t.toLocaleString("en-GB")}`;
     card.appendChild(meta);
 
     ringGridEl.appendChild(card);
 
-    const p = profit[index];
-    const t = target[index];
-    const profitTowardTarget = Math.min(p, t);
-    const aboveTargetAmount = Math.max(0, p - t);
+    /** Slices sum to max(profit, target) so over-performance shows as an extra cyan arc. */
+    const towardTarget = Math.min(p, t);
+    const aboveTarget = Math.max(0, p - t);
     const gapToTarget = Math.max(0, t - p);
 
     const ringChart = new Chart(canvas, {
       type: "doughnut",
       data: {
-        labels: ["Profit (to target)", "Above target", "Remaining to target"],
+        labels: ["Profit toward target", "Above target", "Remaining to target"],
         datasets: [
           {
-            data: [profitTowardTarget, aboveTargetAmount, gapToTarget],
+            data: [towardTarget, aboveTarget, gapToTarget],
             backgroundColor: [
               "rgba(100, 5, 255, 0.95)",
               "rgba(6, 182, 212, 0.9)",
@@ -494,7 +544,90 @@ function renderRingCharts() {
             callbacks: {
               label(context) {
                 const value = context.parsed;
-                return `${context.label}: £${value.toLocaleString("en-GB")}`;
+                return `${context.label}: £${Number(value).toLocaleString("en-GB")}`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    ringCharts.push(ringChart);
+  });
+}
+
+function renderUtilisationRings() {
+  if (!ringGridEl) return;
+  clearRingCharts();
+  ringGridEl.innerHTML = "";
+
+  years.forEach((year, index) => {
+    const card = document.createElement("article");
+    card.className = "ring-card";
+
+    const title = document.createElement("h3");
+    title.textContent = year;
+    card.appendChild(title);
+
+    const wrap = document.createElement("div");
+    wrap.className = "ring-chart-wrap";
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 120;
+    canvas.height = 120;
+    wrap.appendChild(canvas);
+
+    const u = utilisation[index];
+    /** Baseline ring = 100%; values over 100% split into full baseline + overflow. */
+    const toBaseline = Math.min(u, 100);
+    const overBaseline = Math.max(0, u - 100);
+    const headroom = u <= 100 ? Math.max(0, 100 - u) : 0;
+
+    const center = document.createElement("div");
+    center.className = "ring-center";
+    center.textContent = `${u.toFixed(0)}%`;
+    wrap.appendChild(center);
+    card.appendChild(wrap);
+
+    const meta = document.createElement("p");
+    meta.className = "ring-meta";
+    meta.textContent =
+      u > 100 ? "Capacity % achieved (over 100%)" : "Capacity % achieved (of 100%)";
+    card.appendChild(meta);
+
+    ringGridEl.appendChild(card);
+
+    const ringChart = new Chart(canvas, {
+      type: "doughnut",
+      data: {
+        labels: ["To 100%", "Above 100%", "Below 100%"],
+        datasets: [
+          {
+            data: [toBaseline, overBaseline, headroom],
+            backgroundColor: [
+              "rgba(100, 5, 255, 0.95)",
+              "rgba(6, 182, 212, 0.88)",
+              "rgba(255, 255, 255, 0.18)"
+            ],
+            borderColor: ["#6405FF", ABOVE_TARGET_CYAN, "rgba(255, 255, 255, 0.28)"],
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "68%",
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            filter: (item) => Number(item.raw) > 0,
+            callbacks: {
+              label(context) {
+                const value = context.parsed;
+                return `${context.label}: ${Number(value).toFixed(0)}%`;
               }
             }
           }
@@ -507,11 +640,15 @@ function renderRingCharts() {
 }
 
 function renderStep(step) {
-  const isRingStep = step === STEP_TEXT.length - 1;
-  toggleChartMode(isRingStep);
+  const profitRingStep = STEP_TEXT.length - 2;
+  const utilRingStep = STEP_TEXT.length - 1;
+  const isRingMode = step === profitRingStep || step === utilRingStep;
+  toggleChartMode(isRingMode);
 
-  if (isRingStep) {
-    renderRingCharts();
+  if (step === profitRingStep) {
+    renderProfitProgressRings();
+  } else if (step === utilRingStep) {
+    renderUtilisationRings();
   } else {
     clearRingCharts();
     const data = stepConfig(step);
