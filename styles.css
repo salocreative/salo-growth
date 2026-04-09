@@ -72,9 +72,57 @@ body {
   box-shadow: 0 12px 28px rgb(0 0 0 / 0.4);
 }
 
+.hidden {
+  display: none;
+}
+
 canvas {
   width: 100%;
   max-height: 520px;
+}
+
+.ring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.ring-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #1a1a1a;
+  text-align: center;
+}
+
+.ring-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.ring-chart-wrap {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.ring-meta {
+  margin: 0.6rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .controls {
