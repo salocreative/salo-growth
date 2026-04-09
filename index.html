@@ -33,17 +33,21 @@
       </section>
 
       <section class="controls">
-        <div class="control-buttons">
-          <button id="prevBtn" type="button">Previous</button>
-          <button id="nextBtn" type="button">Next</button>
+        <div class="control-toolbar">
+          <div class="control-buttons">
+            <button id="prevBtn" type="button">Previous</button>
+            <button id="nextBtn" type="button">Next</button>
+          </div>
+          <label class="toggle-future">
+            <input type="checkbox" id="showFutureYears" />
+            <span>Show future</span>
+          </label>
+          <span id="yearRangeHint" class="year-range-hint" aria-live="polite"></span>
         </div>
         <p class="controls-hint">
           Use <kbd>→</kbd> / <kbd>←</kbd> or click Next/Previous to animate through the story.
         </p>
-      </section>
-
-      <section class="hint">
-        <p id="status">Loading data from Google Sheets...</p>
+        <p id="status" class="page-status">Loading data from Google Sheets...</p>
       </section>
     </main>
   </body>

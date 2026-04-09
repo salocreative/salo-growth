@@ -43,6 +43,8 @@ let targetPercent = [];
 let utilisation = [];
 let profitMarginPercent = [];
 let ringCharts = [];
+/** When false, chart labels exclude calendar years after the current year. */
+let showFutureYears = false;
 
 function parseCurrency(raw) {
   if (!raw) return 0;
@@ -221,37 +223,71 @@ function extractSeries(rows) {
   }
 }
 
-function revenueToCapacity() {
-  return years.map((_, i) => Math.min(revenue[i], capacity[i]));
+function getCalendarYear() {
+  return new Date().getFullYear();
+}
+
+/** Indices into full `years` / series arrays for the current view. */
+function displayYearIndices() {
+  const cy = getCalendarYear();
+  return years.map((_, i) => i).filter((i) => {
+    const y = parseInt(String(years[i]).trim(), 10);
+    if (!Number.isFinite(y)) return false;
+    return showFutureYears || y <= cy;
+  });
+}
+
+function getDisplay() {
+  const ix = displayYearIndices();
+  const pick = (arr) => ix.map((i) => arr[i]);
+  return {
+    indices: ix,
+    years: pick(years),
+    revenue: pick(revenue),
+    profit: pick(profit),
+    capacity: pick(capacity),
+    target: pick(target),
+    targetPercent: pick(targetPercent),
+    utilisation: pick(utilisation),
+    profitMarginPercent: pick(profitMarginPercent)
+  };
+}
+
+function revenueToCapacityFrom(d) {
+  return d.years.map((_, i) => Math.min(d.revenue[i], d.capacity[i]));
 }
 
 /** Floating bar [yMin, yMax] so the segment sits above the capacity line, not from zero. */
-function revenueAboveCapacityFloating() {
-  return years.map((_, i) => {
-    if (revenue[i] <= capacity[i]) return null;
-    return [capacity[i], revenue[i]];
+function revenueAboveCapacityFloatingFrom(d) {
+  return d.years.map((_, i) => {
+    if (d.revenue[i] <= d.capacity[i]) return null;
+    return [d.capacity[i], d.revenue[i]];
   });
 }
 
-function profitToTarget() {
-  return years.map((_, i) => Math.min(profit[i], target[i]));
+function profitToTargetFrom(d) {
+  return d.years.map((_, i) => Math.min(d.profit[i], d.target[i]));
 }
 
 /** Floating bar [yMin, yMax] from target profit line up to actual profit when profit exceeds target. */
-function profitAboveTargetFloating() {
-  return years.map((_, i) => {
-    if (profit[i] <= target[i]) return null;
-    return [target[i], profit[i]];
+function profitAboveTargetFloatingFrom(d) {
+  return d.years.map((_, i) => {
+    if (d.profit[i] <= d.target[i]) return null;
+    return [d.target[i], d.profit[i]];
   });
 }
 
-function stepConfig(step) {
+function stepConfig(step, d) {
+  if (!d.years.length) {
+    return { datasets: [] };
+  }
+
   if (step === 0) {
     return {
       datasets: [
         {
           label: "Revenue",
-          data: revenue,
+          data: d.revenue,
           type: "bar",
           borderColor: "#FFFFFF",
           backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -268,7 +304,7 @@ function stepConfig(step) {
       datasets: [
         {
           label: "Revenue",
-          data: revenue,
+          data: d.revenue,
           type: "bar",
           borderColor: "#FFFFFF",
           backgroundColor: "rgba(255, 255, 255, 0.92)",
@@ -280,7 +316,7 @@ function stepConfig(step) {
         },
         {
           label: "Profit",
-          data: profit,
+          data: d.profit,
           type: "bar",
           borderColor: BRAND.primary,
           backgroundColor: "rgba(100, 5, 255, 0.95)",
@@ -299,7 +335,7 @@ function stepConfig(step) {
       datasets: [
         {
           label: "Capacity",
-          data: capacity,
+          data: d.capacity,
           type: "bar",
           borderColor: "rgba(255, 255, 255, 0.7)",
           backgroundColor: "rgba(255, 255, 255, 0.5)",
@@ -311,7 +347,7 @@ function stepConfig(step) {
         },
         {
           label: "Revenue (to capacity)",
-          data: revenueToCapacity(),
+          data: revenueToCapacityFrom(d),
           type: "bar",
           borderColor: "#FFFFFF",
           backgroundColor: "rgba(255, 255, 255, 0.92)",
@@ -323,7 +359,7 @@ function stepConfig(step) {
         },
         {
           label: "Above capacity",
-          data: revenueAboveCapacityFloating(),
+          data: revenueAboveCapacityFloatingFrom(d),
           type: "bar",
           borderColor: ABOVE_CAPACITY_GREEN,
           backgroundColor: "rgba(34, 197, 94, 0.85)",
@@ -335,7 +371,7 @@ function stepConfig(step) {
         },
         {
           label: "Profit",
-          data: profit,
+          data: d.profit,
           type: "bar",
           borderColor: BRAND.primary,
           backgroundColor: "rgba(100, 5, 255, 0.95)",
@@ -354,7 +390,7 @@ function stepConfig(step) {
       datasets: [
         {
           label: "Capacity",
-          data: capacity,
+          data: d.capacity,
           type: "bar",
           borderColor: "rgba(255, 255, 255, 0.7)",
           backgroundColor: "rgba(255, 255, 255, 0.5)",
@@ -366,7 +402,7 @@ function stepConfig(step) {
         },
         {
           label: "Revenue (to capacity)",
-          data: revenueToCapacity(),
+          data: revenueToCapacityFrom(d),
           type: "bar",
           borderColor: "#FFFFFF",
           backgroundColor: "rgba(255, 255, 255, 0.92)",
@@ -378,7 +414,7 @@ function stepConfig(step) {
         },
         {
           label: "Above capacity",
-          data: revenueAboveCapacityFloating(),
+          data: revenueAboveCapacityFloatingFrom(d),
           type: "bar",
           borderColor: ABOVE_CAPACITY_GREEN,
           backgroundColor: "rgba(34, 197, 94, 0.85)",
@@ -390,7 +426,7 @@ function stepConfig(step) {
         },
         {
           label: "Target profit",
-          data: target,
+          data: d.target,
           type: "bar",
           borderColor: "#A873FF",
           backgroundColor: "rgba(168, 115, 255, 0.72)",
@@ -402,7 +438,7 @@ function stepConfig(step) {
         },
         {
           label: "Profit (to target)",
-          data: profitToTarget(),
+          data: profitToTargetFrom(d),
           type: "bar",
           borderColor: BRAND.primary,
           backgroundColor: "rgba(100, 5, 255, 0.95)",
@@ -414,7 +450,7 @@ function stepConfig(step) {
         },
         {
           label: "Above target",
-          data: profitAboveTargetFloating(),
+          data: profitAboveTargetFloatingFrom(d),
           type: "bar",
           borderColor: ABOVE_TARGET_CYAN,
           backgroundColor: "rgba(6, 182, 212, 0.88)",
@@ -433,7 +469,7 @@ function stepConfig(step) {
       datasets: [
         {
           label: "Target profit",
-          data: target,
+          data: d.target,
           type: "bar",
           borderColor: "#A873FF",
           backgroundColor: "rgba(168, 115, 255, 0.72)",
@@ -445,7 +481,7 @@ function stepConfig(step) {
         },
         {
           label: "Profit (to target)",
-          data: profitToTarget(),
+          data: profitToTargetFrom(d),
           type: "bar",
           borderColor: BRAND.primary,
           backgroundColor: "rgba(100, 5, 255, 0.95)",
@@ -457,7 +493,7 @@ function stepConfig(step) {
         },
         {
           label: "Above target",
-          data: profitAboveTargetFloating(),
+          data: profitAboveTargetFloatingFrom(d),
           type: "bar",
           borderColor: ABOVE_TARGET_CYAN,
           backgroundColor: "rgba(6, 182, 212, 0.88)",
@@ -480,6 +516,30 @@ function updateUiState() {
   nextBtn.disabled = currentStep === STEP_TEXT.length - 1;
 }
 
+function updateYearRangeHint() {
+  const el = document.getElementById("yearRangeHint");
+  if (!el) return;
+  if (!years.length) {
+    el.textContent = "";
+    return;
+  }
+  const cy = getCalendarYear();
+  const d = getDisplay();
+  if (!showFutureYears && d.years.length === 0) {
+    el.textContent = `Every year in the sheet is after ${cy}. Turn on “Show future” to see data.`;
+    return;
+  }
+  const hasFuture = years.some((y) => {
+    const n = parseInt(String(y).trim(), 10);
+    return Number.isFinite(n) && n > cy;
+  });
+  if (!hasFuture) {
+    el.textContent = "";
+    return;
+  }
+  el.textContent = showFutureYears ? `Including years after ${cy}` : "";
+}
+
 function toggleChartMode(isRingMode) {
   if (!chartCardEl || !ringSectionEl) return;
   chartCardEl.classList.toggle("hidden", isRingMode);
@@ -496,7 +556,8 @@ function renderProfitMarginRings() {
   clearRingCharts();
   ringGridEl.innerHTML = "";
 
-  years.forEach((year, index) => {
+  const d = getDisplay();
+  d.years.forEach((year, index) => {
     const card = document.createElement("article");
     card.className = "ring-card";
 
@@ -512,7 +573,7 @@ function renderProfitMarginRings() {
     canvas.height = 120;
     wrap.appendChild(canvas);
 
-    const m = profitMarginPercent[index];
+    const m = d.profitMarginPercent[index];
     const remainder = Math.max(0, 100 - m);
 
     const center = document.createElement("div");
@@ -571,7 +632,8 @@ function renderProfitProgressRings() {
   clearRingCharts();
   ringGridEl.innerHTML = "";
 
-  years.forEach((year, index) => {
+  const d = getDisplay();
+  d.years.forEach((year, index) => {
     const card = document.createElement("article");
     card.className = "ring-card";
 
@@ -589,7 +651,7 @@ function renderProfitProgressRings() {
 
     const center = document.createElement("div");
     center.className = "ring-center";
-    const pctRaw = targetPercent[index];
+    const pctRaw = d.targetPercent[index];
     const percentValue = Number.isFinite(pctRaw) ? pctRaw : 0;
     center.textContent = `${percentValue.toFixed(0)}%`;
     wrap.appendChild(center);
@@ -597,8 +659,8 @@ function renderProfitProgressRings() {
 
     const meta = document.createElement("p");
     meta.className = "ring-meta";
-    const p = profit[index];
-    const t = target[index];
+    const p = d.profit[index];
+    const t = d.target[index];
     meta.textContent =
       p >= t
         ? `Profit £${p.toLocaleString("en-GB")} vs target £${t.toLocaleString("en-GB")}`
@@ -659,7 +721,8 @@ function renderUtilisationRings() {
   clearRingCharts();
   ringGridEl.innerHTML = "";
 
-  years.forEach((year, index) => {
+  const d = getDisplay();
+  d.years.forEach((year, index) => {
     const card = document.createElement("article");
     card.className = "ring-card";
 
@@ -675,7 +738,7 @@ function renderUtilisationRings() {
     canvas.height = 120;
     wrap.appendChild(canvas);
 
-    const u = utilisation[index];
+    const u = d.utilisation[index];
     /** Baseline ring = 100%; values over 100% split into full baseline + overflow. */
     const toBaseline = Math.min(u, 100);
     const overBaseline = Math.max(0, u - 100);
@@ -744,6 +807,27 @@ function renderStep(step) {
     step === STEP_PROFIT_MARGIN_RING || step === profitProgressRingStep || step === utilRingStep;
   toggleChartMode(isRingMode);
 
+  const d = getDisplay();
+  const emptyFiltered = years.length > 0 && !showFutureYears && d.years.length === 0;
+  if (emptyFiltered) {
+    clearRingCharts();
+    if (isRingMode && ringGridEl) {
+      ringGridEl.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "empty-filter-msg";
+      p.textContent = `No years in view. Turn on “Show future” to include years after ${getCalendarYear()}.`;
+      ringGridEl.appendChild(p);
+    } else if (!isRingMode && chart) {
+      if (ringGridEl) ringGridEl.innerHTML = "";
+      chart.data.labels = [];
+      chart.data.datasets = [];
+      chart.update();
+    }
+    updateUiState();
+    updateYearRangeHint();
+    return;
+  }
+
   if (step === STEP_PROFIT_MARGIN_RING) {
     renderProfitMarginRings();
   } else if (step === profitProgressRingStep) {
@@ -752,13 +836,14 @@ function renderStep(step) {
     renderUtilisationRings();
   } else {
     clearRingCharts();
-    const data = stepConfig(step);
-    chart.data.labels = years;
+    const data = stepConfig(step, d);
+    chart.data.labels = d.years;
     chart.data.datasets = data.datasets;
     chart.update();
   }
 
   updateUiState();
+  updateYearRangeHint();
 }
 
 function nextStep() {
@@ -777,6 +862,15 @@ function attachControls() {
   nextBtn.addEventListener("click", nextStep);
   prevBtn.addEventListener("click", prevStep);
 
+  const futureToggle = document.getElementById("showFutureYears");
+  if (futureToggle) {
+    futureToggle.checked = showFutureYears;
+    futureToggle.addEventListener("change", () => {
+      showFutureYears = futureToggle.checked;
+      renderStep(currentStep);
+    });
+  }
+
   window.addEventListener("keydown", (event) => {
     if (event.key === "ArrowRight") {
       nextStep();
@@ -791,7 +885,7 @@ function createChart() {
   chart = new Chart(ctx, {
     type: "bar",
     data: {
-      labels: years,
+      labels: [],
       datasets: []
     },
     options: {
