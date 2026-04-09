@@ -1,0 +1,136 @@
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --text: #f5f5f5;
+  --muted: #b4b4b8;
+  --card: #1f1f1f;
+  --primary: #6405ff;
+  --primary-soft: #9a6dff;
+  --border: #303030;
+  --soft: #52525b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Fustat", Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page {
+  min-height: 100vh;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+}
+
+.brand-logo {
+  display: block;
+  width: 150px;
+  max-width: 100%;
+  height: auto;
+}
+
+.header-divider {
+  width: 1px;
+  height: 48px;
+  background: var(--border);
+}
+
+.header-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.4);
+}
+
+canvas {
+  width: 100%;
+  max-height: 520px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 0.45rem;
+}
+
+button {
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: #fff;
+  padding: 0.4rem 0.72rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.86rem;
+  line-height: 1.1;
+}
+
+button:hover {
+  background: var(--primary-soft);
+}
+
+button:disabled {
+  background: var(--soft);
+  cursor: not-allowed;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.hint p {
+  margin: 0;
+}
+
+.controls-hint {
+  margin: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: #27272a;
+  border-radius: 6px;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid #3f3f46;
+}

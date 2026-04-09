@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Salo Growth Story</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fustat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <img class="brand-logo" src="./assets/SALO.svg" alt="Salo" />
+        <div class="header-divider" aria-hidden="true"></div>
+        <div class="header-copy">
+          <h1>Salo Growth</h1>
+          <p id="subtitle">Turnover trend</p>
+        </div>
+      </header>
+
+      <section class="chart-card">
+        <canvas id="growthChart" aria-label="Turnover and profit chart" role="img"></canvas>
+      </section>
+
+      <section class="controls">
+        <div class="control-buttons">
+          <button id="prevBtn" type="button">Previous</button>
+          <button id="nextBtn" type="button">Next</button>
+        </div>
+        <p class="controls-hint">
+          Use <kbd>→</kbd> / <kbd>←</kbd> or click Next/Previous to animate through the story.
+        </p>
+      </section>
+
+      <section class="hint">
+        <p id="status">Loading data from Google Sheets...</p>
+      </section>
+    </main>
+  </body>
+</html>
