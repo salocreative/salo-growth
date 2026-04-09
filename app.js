@@ -96,13 +96,15 @@ function fetchSheetRows() {
 }
 
 function extractSeries(rows) {
+  const normalizeLabel = (value) => String(value ?? "").trim().toLowerCase();
+  const findRowByLabels = (labels, fallbackIndex) =>
+    rows.find((row) => labels.includes(normalizeLabel(row?.[0]))) || rows[fallbackIndex] || [];
+
   const yearRow = rows.find((row) => String(row?.[0] ?? "").trim() === "") || rows[0] || [];
-  const turnoverRow =
-    rows.find((row) => String(row?.[0] ?? "").trim().toLowerCase() === "turnover") || rows[1] || [];
+  const turnoverRow = findRowByLabels(["turnover", "revenue"], 1);
   const profitRow =
-    rows.find((row) => String(row?.[0] ?? "").trim().toLowerCase().startsWith("profit")) || rows[2] || [];
-  const targetRow =
-    rows.find((row) => String(row?.[0] ?? "").trim().toLowerCase() === "target") || rows[3] || [];
+    rows.find((row) => normalizeLabel(row?.[0]).startsWith("profit")) || rows[2] || [];
+  const targetRow = findRowByLabels(["target profit", "target"], 10);
 
   const yearCells = yearRow.slice(1).map((cell) => String(cell).trim());
   years = yearCells.filter((cell) => /^\d{4}$/.test(cell));
@@ -113,7 +115,7 @@ function extractSeries(rows) {
   target = targetRow.slice(1, seriesLength + 1).map(parseCurrency);
 
   if (!years.length || !turnover.length || !profit.length || !target.length) {
-    throw new Error("Data not found in expected rows: years, turnover, profit, target.");
+    throw new Error("Data not found in expected rows: years, revenue/turnover, profit, target profit.");
   }
 }
 
