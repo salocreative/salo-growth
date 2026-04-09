@@ -4,12 +4,15 @@ const SHEET_GID = "0";
 const STEP_TEXT = [
   "Revenue trend",
   "Split view with profit highlighted",
+  "Profit (%) by year",
   "Revenue, capacity and profit",
   "Revenue, capacity, profit and target",
   "Profit and target",
   "Profit progress to target by year",
   "Utilisation"
 ];
+/** Ring slide: profit margin from sheet row 4 (Profit %) — deck slide 3. */
+const STEP_PROFIT_MARGIN_RING = 2;
 const BRAND = {
   primary: "#6405FF",
   primarySoft: "#9A6DFF",
@@ -38,6 +41,7 @@ let capacity = [];
 let target = [];
 let targetPercent = [];
 let utilisation = [];
+let profitMarginPercent = [];
 let ringCharts = [];
 
 function parseCurrency(raw) {
@@ -138,6 +142,12 @@ function extractSeries(rows) {
       if (lab.includes("%")) return false;
       return true;
     }) || rows[2] || [];
+  /** Row 4: Profit (%) — margin as % of revenue. */
+  const profitPctRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      return lab.startsWith("profit") && lab.includes("%");
+    }) || rows[3] || [];
   const capacityRow = findRowByLabels(["capacity"], 9);
   const targetRow = findRowByLabels(["target profit", "target"], 10);
   /** Row 12 in current sheet: "Profit vs Target" (may exceed 100%). */
@@ -194,6 +204,15 @@ function extractSeries(rows) {
   if (utilisation.length && utilisation.every((v) => v === 0) && rows[16]) {
     utilisation = parseSeries(rows[16], seriesLength, parsePercent, null).map(normaliseUtilisationPct);
   }
+
+  function normaliseMarginPct(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return 0;
+    let n = Number(value);
+    if (n > 0 && n <= 1) n *= 100;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  profitMarginPercent = parseSeries(profitPctRow, seriesLength, parsePercent, null).map(normaliseMarginPct);
 
   if (!years.length || !revenue.length || !profit.length || !capacity.length || !target.length) {
     throw new Error(
@@ -275,7 +294,7 @@ function stepConfig(step) {
     };
   }
 
-  if (step === 2) {
+  if (step === 3) {
     return {
       datasets: [
         {
@@ -330,7 +349,7 @@ function stepConfig(step) {
     };
   }
 
-  if (step === 3) {
+  if (step === 4) {
     return {
       datasets: [
         {
@@ -409,46 +428,50 @@ function stepConfig(step) {
     };
   }
 
-  return {
-    datasets: [
-      {
-        label: "Target profit",
-        data: target,
-        type: "bar",
-        borderColor: "#A873FF",
-        backgroundColor: "rgba(168, 115, 255, 0.72)",
-        borderWidth: 1,
-        grouped: false,
-        order: 3,
-        barThickness: BAR_THICKNESS,
-        maxBarThickness: BAR_THICKNESS
-      },
-      {
-        label: "Profit (to target)",
-        data: profitToTarget(),
-        type: "bar",
-        borderColor: BRAND.primary,
-        backgroundColor: "rgba(100, 5, 255, 0.95)",
-        borderWidth: 1,
-        grouped: false,
-        order: 2,
-        barThickness: BAR_THICKNESS,
-        maxBarThickness: BAR_THICKNESS
-      },
-      {
-        label: "Above target",
-        data: profitAboveTargetFloating(),
-        type: "bar",
-        borderColor: ABOVE_TARGET_CYAN,
-        backgroundColor: "rgba(6, 182, 212, 0.88)",
-        borderWidth: 1,
-        grouped: false,
-        order: 1,
-        barThickness: BAR_THICKNESS,
-        maxBarThickness: BAR_THICKNESS
-      }
-    ]
-  };
+  if (step === 5) {
+    return {
+      datasets: [
+        {
+          label: "Target profit",
+          data: target,
+          type: "bar",
+          borderColor: "#A873FF",
+          backgroundColor: "rgba(168, 115, 255, 0.72)",
+          borderWidth: 1,
+          grouped: false,
+          order: 3,
+          barThickness: BAR_THICKNESS,
+          maxBarThickness: BAR_THICKNESS
+        },
+        {
+          label: "Profit (to target)",
+          data: profitToTarget(),
+          type: "bar",
+          borderColor: BRAND.primary,
+          backgroundColor: "rgba(100, 5, 255, 0.95)",
+          borderWidth: 1,
+          grouped: false,
+          order: 2,
+          barThickness: BAR_THICKNESS,
+          maxBarThickness: BAR_THICKNESS
+        },
+        {
+          label: "Above target",
+          data: profitAboveTargetFloating(),
+          type: "bar",
+          borderColor: ABOVE_TARGET_CYAN,
+          backgroundColor: "rgba(6, 182, 212, 0.88)",
+          borderWidth: 1,
+          grouped: false,
+          order: 1,
+          barThickness: BAR_THICKNESS,
+          maxBarThickness: BAR_THICKNESS
+        }
+      ]
+    };
+  }
+
+  return { datasets: [] };
 }
 
 function updateUiState() {
@@ -466,6 +489,81 @@ function toggleChartMode(isRingMode) {
 function clearRingCharts() {
   ringCharts.forEach((instance) => instance.destroy());
   ringCharts = [];
+}
+
+function renderProfitMarginRings() {
+  if (!ringGridEl) return;
+  clearRingCharts();
+  ringGridEl.innerHTML = "";
+
+  years.forEach((year, index) => {
+    const card = document.createElement("article");
+    card.className = "ring-card";
+
+    const title = document.createElement("h3");
+    title.textContent = year;
+    card.appendChild(title);
+
+    const wrap = document.createElement("div");
+    wrap.className = "ring-chart-wrap";
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 120;
+    canvas.height = 120;
+    wrap.appendChild(canvas);
+
+    const m = profitMarginPercent[index];
+    const remainder = Math.max(0, 100 - m);
+
+    const center = document.createElement("div");
+    center.className = "ring-center";
+    center.textContent = `${m.toFixed(0)}%`;
+    wrap.appendChild(center);
+    card.appendChild(wrap);
+
+    const meta = document.createElement("p");
+    meta.className = "ring-meta";
+    meta.textContent = "Profit as % of revenue";
+    card.appendChild(meta);
+
+    ringGridEl.appendChild(card);
+
+    const ringChart = new Chart(canvas, {
+      type: "doughnut",
+      data: {
+        labels: ["Profit margin", "Remainder to 100%"],
+        datasets: [
+          {
+            data: [m, remainder],
+            backgroundColor: ["rgba(100, 5, 255, 0.95)", "rgba(255, 255, 255, 0.18)"],
+            borderColor: ["#6405FF", "rgba(255, 255, 255, 0.28)"],
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "68%",
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            filter: (item) => Number(item.raw) > 0,
+            callbacks: {
+              label(context) {
+                const value = context.parsed;
+                return `${context.label}: ${Number(value).toFixed(0)}%`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    ringCharts.push(ringChart);
+  });
 }
 
 function renderProfitProgressRings() {
@@ -640,12 +738,15 @@ function renderUtilisationRings() {
 }
 
 function renderStep(step) {
-  const profitRingStep = STEP_TEXT.length - 2;
+  const profitProgressRingStep = STEP_TEXT.length - 2;
   const utilRingStep = STEP_TEXT.length - 1;
-  const isRingMode = step === profitRingStep || step === utilRingStep;
+  const isRingMode =
+    step === STEP_PROFIT_MARGIN_RING || step === profitProgressRingStep || step === utilRingStep;
   toggleChartMode(isRingMode);
 
-  if (step === profitRingStep) {
+  if (step === STEP_PROFIT_MARGIN_RING) {
+    renderProfitMarginRings();
+  } else if (step === profitProgressRingStep) {
     renderProfitProgressRings();
   } else if (step === utilRingStep) {
     renderUtilisationRings();
