@@ -753,7 +753,7 @@ function renderUtilisationRings() {
     const meta = document.createElement("p");
     meta.className = "ring-meta";
     meta.textContent =
-      u > 100 ? "Capacity % achieved (over 100%)" : "Capacity % achieved (of 100%)";
+      u > 100 ? "Capacity % achieved (over 80%)" : "Capacity % achieved (of 80%)";
     card.appendChild(meta);
 
     ringGridEl.appendChild(card);
