@@ -42,6 +42,7 @@ let target = [];
 let targetPercent = [];
 let utilisation = [];
 let profitMarginPercent = [];
+let fteCalcNotes = [];
 let ringCharts = [];
 /** When false, chart labels exclude calendar years after the current year. */
 let showFutureYears = false;
@@ -69,7 +70,30 @@ function parseSeries(row, length, parser, emptyFallback) {
   return parsed;
 }
 
-function fetchSheetRows() {
+function parseTextSeries(row, length) {
+  const cells = (row || []).slice(1, length + 1);
+  return Array.from({ length }, (_, index) => {
+    const value = cells[index];
+    if (value === undefined || value === null) return "";
+    return String(value).trim();
+  });
+}
+
+function parseFteRangeRow(row, length) {
+  const cells = row || [];
+  if (!cells.length) return Array.from({ length }, () => "");
+  const first = String(cells[0] ?? "").trim().toLowerCase();
+  const startsWithLabel =
+    first === "fte calc" || first === "fte calculation" || first === "fte notes";
+  const startIndex = startsWithLabel ? 1 : 0;
+  return Array.from({ length }, (_, i) => {
+    const value = cells[startIndex + i];
+    if (value === undefined || value === null) return "";
+    return String(value).trim();
+  });
+}
+
+function fetchSheetRows(range) {
   // JSONP avoids browser CORS errors from direct cross-origin fetches.
   return new Promise((resolve, reject) => {
     const cbName = `sheetCb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
@@ -124,12 +148,13 @@ function fetchSheetRows() {
     };
 
     const tqx = encodeURIComponent(`responseHandler:${cbName}`);
-    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=${tqx}&gid=${SHEET_GID}`;
+    const rangeParam = range ? `&range=${encodeURIComponent(range)}` : "";
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=${tqx}&gid=${SHEET_GID}${rangeParam}`;
     document.head.appendChild(script);
   });
 }
 
-function extractSeries(rows) {
+function extractSeries(rows, fteRangeRow) {
   const normalizeLabel = (value) => String(value ?? "").trim().toLowerCase();
   const findRowByLabels = (labels, fallbackIndex) =>
     rows.find((row) => labels.includes(normalizeLabel(row?.[0]))) || rows[fallbackIndex] || [];
@@ -178,6 +203,7 @@ function extractSeries(rows) {
     }) ||
     rows[16] ||
     [];
+  const fteCalcRow = findRowByLabels(["fte calc", "fte calculation", "fte notes"], 22);
 
   const yearCells = yearRow.slice(1).map((cell) => String(cell).trim());
   years = yearCells.filter((cell) => /^\d{4}$/.test(cell));
@@ -215,6 +241,10 @@ function extractSeries(rows) {
   }
 
   profitMarginPercent = parseSeries(profitPctRow, seriesLength, parsePercent, null).map(normaliseMarginPct);
+  fteCalcNotes = parseTextSeries(fteCalcRow, seriesLength);
+  if (fteRangeRow && fteCalcNotes.every((s) => !String(s).trim())) {
+    fteCalcNotes = parseFteRangeRow(fteRangeRow, seriesLength);
+  }
 
   if (!years.length || !revenue.length || !profit.length || !capacity.length || !target.length) {
     throw new Error(
@@ -249,8 +279,13 @@ function getDisplay() {
     target: pick(target),
     targetPercent: pick(targetPercent),
     utilisation: pick(utilisation),
-    profitMarginPercent: pick(profitMarginPercent)
+    profitMarginPercent: pick(profitMarginPercent),
+    fteCalcNotes: pick(fteCalcNotes)
   };
+}
+
+function isCapacityStep(step) {
+  return step === 3 || step === 4 || step === STEP_TEXT.length - 1;
 }
 
 function revenueToCapacityFrom(d) {
@@ -756,6 +791,20 @@ function renderUtilisationRings() {
       u > 100 ? "Capacity % achieved (over 80%)" : "Capacity % achieved (of 80%)";
     card.appendChild(meta);
 
+    const fteNote = String(d.fteCalcNotes[index] || "").trim();
+    if (fteNote) {
+      const details = document.createElement("details");
+      details.className = "fte-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "FTE calc";
+      const body = document.createElement("p");
+      body.className = "fte-details-body";
+      body.textContent = fteNote;
+      details.appendChild(summary);
+      details.appendChild(body);
+      card.appendChild(details);
+    }
+
     ringGridEl.appendChild(card);
 
     const ringChart = new Chart(canvas, {
@@ -920,6 +969,17 @@ function createChart() {
                 return context.dataset.label;
               }
               return `${context.dataset.label}: £${Number(value).toLocaleString("en-GB")}`;
+            },
+            afterTitle(context) {
+              if (!context || !context.length) return "";
+              if (!isCapacityStep(currentStep)) return "";
+              const point = context[0];
+              const idx = point?.dataIndex;
+              if (!Number.isFinite(idx)) return "";
+              const d = getDisplay();
+              const note = String(d.fteCalcNotes[idx] || "").trim();
+              if (!note) return "";
+              return ["FTE calc:", ...note.split(/\r?\n/)];
             }
           }
         }
@@ -966,8 +1026,11 @@ function createChart() {
 
 async function init() {
   try {
-    const rows = await fetchSheetRows();
-    extractSeries(rows);
+    const [rows, fteRangeRows] = await Promise.all([
+      fetchSheetRows(),
+      fetchSheetRows("A23:ZZ23")
+    ]);
+    extractSeries(rows, fteRangeRows?.[0] || []);
     createChart();
     renderStep(currentStep);
     attachControls();

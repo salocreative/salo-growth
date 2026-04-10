@@ -159,6 +159,26 @@ canvas {
   color: var(--muted);
 }
 
+.fte-details {
+  margin-top: 0.8rem;
+  text-align: left;
+}
+
+.fte-details summary {
+  cursor: pointer;
+  color: var(--primary-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.fte-details-body {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.35;
+  white-space: pre-line;
+}
+
 .controls {
   display: flex;
   flex-direction: column;
