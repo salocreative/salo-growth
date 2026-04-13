@@ -9,8 +9,15 @@ const STEP_TEXT = [
   "Revenue, capacity, profit and target",
   "Profit and target",
   "Profit progress to target by year",
-  "Utilisation"
+  "Day rate vs inflation, required and market",
+  "Utilisation",
+  "Current resources vs required resources"
 ];
+/** Ring slides keep fixed indices so appending bar/line slides does not break ring mode. */
+const STEP_PROFIT_PROGRESS_RING = 6;
+const STEP_DAY_RATE_LINE = 7;
+const STEP_UTILISATION_RING = 8;
+const STEP_RESOURCE_LEVEL_LINE = 9;
 /** Ring slide: profit margin from sheet row 4 (Profit %) — deck slide 3. */
 const STEP_PROFIT_MARGIN_RING = 2;
 const BRAND = {
@@ -43,6 +50,14 @@ let targetPercent = [];
 let utilisation = [];
 let profitMarginPercent = [];
 let fteCalcNotes = [];
+/** Sheet rows 9, 19–21 (1-based): day rate, inflation, required, market benchmark. */
+let dayRate = [];
+let dayRateWithInflation = [];
+let dayRateRequired = [];
+let dayRateMarket = [];
+/** Sheet rows 8 & 14 (1-based): Billable FTE vs Required FTE. */
+let currentResource = [];
+let resourceRequired = [];
 let ringCharts = [];
 /** When false, chart labels exclude calendar years after the current year. */
 let showFutureYears = false;
@@ -204,6 +219,46 @@ function extractSeries(rows, fteRangeRow) {
     rows[16] ||
     [];
   const fteCalcRow = findRowByLabels(["fte calc", "fte calculation", "fte notes"], 22);
+  /** Row 9: Day Rate; row 19: UK inflation; row 20: required; row 21: market rate. */
+  const dayRateRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      if (lab.includes("required")) return false;
+      if (lab.includes("market")) return false;
+      return lab === "day rate" || (lab.includes("day rate") && !lab.includes("inflation"));
+    }) || rows[8] || [];
+  const dayRateInflationRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      return lab.includes("day rate") && lab.includes("inflation");
+    }) || rows[18] || [];
+  const dayRateRequiredRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      if (!lab.includes("required")) return false;
+      return (
+        lab.includes("rate required") ||
+        (lab.includes("required") && lab.includes("day rate"))
+      );
+    }) || rows[19] || [];
+  const dayRateMarketRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      return lab.includes("market") && lab.includes("day rate");
+    }) || rows[20] || [];
+  /** Row 8: Billable FTE; row 14: Required FTE (1-based). Match labels, not “resource” substring. */
+  const currentResourceRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      if (lab.includes("day rate")) return false;
+      return lab.includes("billable") && lab.includes("fte");
+    }) || rows[7] || [];
+  const resourceRequiredRow =
+    rows.find((row) => {
+      const lab = normalizeLabel(row?.[0]);
+      if (lab.includes("day rate")) return false;
+      return lab.includes("required") && lab.includes("fte");
+    }) || rows[13] || [];
 
   const yearCells = yearRow.slice(1).map((cell) => String(cell).trim());
   years = yearCells.filter((cell) => /^\d{4}$/.test(cell));
@@ -241,6 +296,12 @@ function extractSeries(rows, fteRangeRow) {
   }
 
   profitMarginPercent = parseSeries(profitPctRow, seriesLength, parsePercent, null).map(normaliseMarginPct);
+  dayRate = parseSeries(dayRateRow, seriesLength, parseCurrency, 0);
+  dayRateWithInflation = parseSeries(dayRateInflationRow, seriesLength, parseCurrency, 0);
+  dayRateRequired = parseSeries(dayRateRequiredRow, seriesLength, parseCurrency, 0);
+  dayRateMarket = parseSeries(dayRateMarketRow, seriesLength, parseCurrency, 0);
+  currentResource = parseSeries(currentResourceRow, seriesLength, parseCurrency, 0);
+  resourceRequired = parseSeries(resourceRequiredRow, seriesLength, parseCurrency, 0);
   fteCalcNotes = parseTextSeries(fteCalcRow, seriesLength);
   if (fteRangeRow && fteCalcNotes.every((s) => !String(s).trim())) {
     fteCalcNotes = parseFteRangeRow(fteRangeRow, seriesLength);
@@ -280,12 +341,22 @@ function getDisplay() {
     targetPercent: pick(targetPercent),
     utilisation: pick(utilisation),
     profitMarginPercent: pick(profitMarginPercent),
-    fteCalcNotes: pick(fteCalcNotes)
+    fteCalcNotes: pick(fteCalcNotes),
+    dayRate: pick(dayRate),
+    dayRateWithInflation: pick(dayRateWithInflation),
+    dayRateRequired: pick(dayRateRequired),
+    dayRateMarket: pick(dayRateMarket),
+    currentResource: pick(currentResource),
+    resourceRequired: pick(resourceRequired)
   };
 }
 
 function isCapacityStep(step) {
-  return step === 3 || step === 4 || step === STEP_TEXT.length - 1;
+  return step === 3 || step === 4 || step === STEP_UTILISATION_RING;
+}
+
+function isResourceLevelStep(step) {
+  return step === STEP_RESOURCE_LEVEL_LINE;
 }
 
 function revenueToCapacityFrom(d) {
@@ -537,6 +608,98 @@ function stepConfig(step, d) {
           order: 1,
           barThickness: BAR_THICKNESS,
           maxBarThickness: BAR_THICKNESS
+        }
+      ]
+    };
+  }
+
+  if (step === STEP_DAY_RATE_LINE) {
+    return {
+      datasets: [
+        {
+          label: "Day rate",
+          data: d.dayRate,
+          type: "line",
+          borderColor: "#FFFFFF",
+          backgroundColor: "rgba(255, 255, 255, 0.12)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: false,
+          order: 2
+        },
+        {
+          label: "Day rate (UK inflation)",
+          data: d.dayRateWithInflation,
+          type: "line",
+          borderColor: BRAND.primarySoft,
+          backgroundColor: "rgba(154, 109, 255, 0.15)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: false,
+          order: 1
+        },
+        {
+          label: "Day rate required",
+          data: d.dayRateRequired,
+          type: "line",
+          borderColor: ABOVE_TARGET_CYAN,
+          backgroundColor: "rgba(6, 182, 212, 0.12)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: false,
+          order: 3
+        },
+        {
+          label: "Market rate day rate",
+          data: d.dayRateMarket,
+          type: "line",
+          borderColor: ABOVE_CAPACITY_GREEN,
+          backgroundColor: "rgba(34, 197, 94, 0.12)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: false,
+          order: 4
+        }
+      ]
+    };
+  }
+
+  if (step === STEP_RESOURCE_LEVEL_LINE) {
+    return {
+      datasets: [
+        {
+          label: "Current Resource",
+          data: d.currentResource,
+          type: "line",
+          borderColor: "#FFFFFF",
+          backgroundColor: "rgba(255, 255, 255, 0.12)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: false,
+          order: 2
+        },
+        {
+          label: "Resource Required",
+          data: d.resourceRequired,
+          type: "line",
+          borderColor: BRAND.primarySoft,
+          backgroundColor: "rgba(154, 109, 255, 0.15)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: false,
+          order: 1
         }
       ]
     };
@@ -850,10 +1013,10 @@ function renderUtilisationRings() {
 }
 
 function renderStep(step) {
-  const profitProgressRingStep = STEP_TEXT.length - 2;
-  const utilRingStep = STEP_TEXT.length - 1;
   const isRingMode =
-    step === STEP_PROFIT_MARGIN_RING || step === profitProgressRingStep || step === utilRingStep;
+    step === STEP_PROFIT_MARGIN_RING ||
+    step === STEP_PROFIT_PROGRESS_RING ||
+    step === STEP_UTILISATION_RING;
   toggleChartMode(isRingMode);
 
   const d = getDisplay();
@@ -879,9 +1042,9 @@ function renderStep(step) {
 
   if (step === STEP_PROFIT_MARGIN_RING) {
     renderProfitMarginRings();
-  } else if (step === profitProgressRingStep) {
+  } else if (step === STEP_PROFIT_PROGRESS_RING) {
     renderProfitProgressRings();
-  } else if (step === utilRingStep) {
+  } else if (step === STEP_UTILISATION_RING) {
     renderUtilisationRings();
   } else {
     clearRingCharts();
@@ -968,6 +1131,9 @@ function createChart() {
               if (value === null || value === undefined || Number.isNaN(Number(value))) {
                 return context.dataset.label;
               }
+              if (isResourceLevelStep(currentStep)) {
+                return `${context.dataset.label}: ${Number(value).toLocaleString("en-GB")} FTE`;
+              }
               return `${context.dataset.label}: £${Number(value).toLocaleString("en-GB")}`;
             },
             afterTitle(context) {
@@ -996,6 +1162,9 @@ function createChart() {
           ticks: {
             color: BRAND.text,
             callback(value) {
+              if (isResourceLevelStep(currentStep)) {
+                return Number(value).toLocaleString("en-GB");
+              }
               return `£${Number(value).toLocaleString("en-GB")}`;
             }
           }
